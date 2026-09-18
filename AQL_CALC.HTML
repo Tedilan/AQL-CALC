@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISO 2859-1 AQL 합불판정 및 판정표 시각화 계산기</title>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --primary-light: #334155;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      
+      /* 붉은 음영 및 교차점 하이라이트 색상 */
+      --hl-tint-row: #fee2e2;       /* 행 붉은 음영 */
+      --hl-tint-col: #fee2e2;       /* 열 붉은 음영 */
+      --hl-tint-header: #fca5a5;    /* 헤더 붉은 음영 */
+      --hl-cross-bg: #dc2626;       /* 교차점 진한 빨강 */
+      --hl-cross-text: #ffffff;     /* 교차점 텍스트 흰색 */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1540px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* 최상단 제목줄 */
+    header {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 14px;
+    }
+    header h1 {
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.02em;
+    }
+    header .subtitle {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 4px;
+    }
+    header .rule-ref {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #b91c1c;
+      margin-top: 6px;
+      background: #fef2f2;
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid #fecaca;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    /* 컨트롤 영역: 치명, 중, 경 세로선 구분 적용 */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.1fr 1fr 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 1100px) {
+      .controls-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--primary-light);
+      text-transform: uppercase;
+    }
+    .form-group.v-divider {
+      border-left: 2px solid #cbd5e1;
+      padding-left: 14px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 6px;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.92rem;
+      color: var(--text);
+      background-color: #fff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    /* KPI 결과 카드 */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .kpi-card {
+      border-left: 5px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .kpi-card.crit { border-left-color: #dc2626; }
+    .kpi-card.maj { border-left-color: #ea580c; }
+    .kpi-card.min { border-left-color: #2563eb; }
+
+    .kpi-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .badge-crit { background: #fee2e2; color: #991b1b; }
+    .badge-maj { background: #ffedd5; color: #9a3412; }
+    .badge-min { background: #dbeafe; color: #1e40af; }
+    .badge-zero { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+    .kpi-metrics {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 1fr 1fr;
+      text-align: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .kpi-metric-box {
+      background: #f1f5f9;
+      border-radius: 6px;
+      padding: 6px 4px;
+    }
+    .kpi-metric-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .kpi-metric-val {
+      font-size: 1.12rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .kpi-arrow-info {
+      font-size: 0.74rem;
+      color: #b91c1c;
+      font-weight: 600;
+      min-height: 18px;
+    }
+
+    /* 시뮬레이션 검증기 */
+    .tester-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f8fafc;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px dashed var(--border);
+      margin-top: 4px;
+    }
+    .tester-row label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .tester-row input {
+      width: 65px;
+      padding: 4px 6px;
+      font-size: 0.85rem;
+    }
+    .verdict {
+      margin-left: auto;
+      font-size: 0.8rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .verdict.pass { background: #dcfce7; color: #166534; }
+    .verdict.fail { background: #fee2e2; color: #991b1b; }
+
+    /* 표 레이아웃 */
+    .tables-layout {
+      display: grid;
+      grid-template-columns: 450px 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 1200px) {
+      .tables-layout { grid-template-columns: 1fr; }
+    }
+
+    .table-container {
+      overflow-x: auto;
+      max-height: 560px;
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.76rem;
+      text-align: center;
+    }
+    th, td {
+      padding: 7px 6px;
+      border-right: 1px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+    
+    /* 좌측 고정 열 */
+    td.sticky-col {
+      position: sticky;
+      left: 0;
+      background: #ffffff;
+      font-weight: 700;
+      z-index: 2;
+      border-right: 2px solid var(--border);
+    }
+    th.sticky-col {
+      position: sticky;
+      left: 0;
+      top: 0;
+      z-index: 5;
+      background: #e2e8f0;
+      border-right: 2px solid var(--border);
+    }
+    td.sticky-n {
+      position: sticky;
+      left: 55px;
+      background: #ffffff;
+      font-weight: 700;
+      z-index: 2;
+      border-right: 2px solid var(--border);
+    }
+    th.sticky-n {
+      position: sticky;
+      left: 55px;
+      top: 0;
+      z-index: 5;
+      background: #e2e8f0;
+      border-right: 2px solid var(--border);
+    }
+
+    .link-btn {
+      font-size: 0.74rem;
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 2px 6px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+    }
+    .link-btn:hover { background: #dbeafe; }
+
+    /* ========================================================
+       붉은 음영 및 교차점 하이라이트 스타일
+       ======================================================== */
+    /* 유효 적용 행 (최종 샘플링 행) 음영 */
+    tr.hl-row td {
+      background-color: var(--hl-tint-row) !important;
+    }
+    tr.hl-row td.sticky-col,
+    tr.hl-row td.sticky-n {
+      background-color: var(--hl-tint-header) !important;
+      color: #7f1d1d !important;
+      font-weight: 800 !important;
+    }
+
+    /* 원래 기준 문자 행(Table 1 도출 행) 강조 표시: 파란 점선 테두리 */
+    tr.hl-base-row td.sticky-col {
+      outline: 2px dashed #2563eb !important;
+      outline-offset: -2px;
+    }
+
+    th.hl-col {
+      background-color: var(--hl-tint-header) !important;
+      color: #7f1d1d !important;
+      font-weight: 800 !important;
+    }
+    td.hl-col {
+      background-color: var(--hl-tint-col) !important;
+    }
+
+    /* 교차점 셀 */
+    td.hl-cross {
+      background-color: var(--hl-cross-bg) !important;
+      color: var(--hl-cross-text) !important;
+      font-weight: 900 !important;
+      border: 2px solid #991b1b !important;
+      position: relative;
+      z-index: 4;
+      box-shadow: 0 0 8px rgba(220, 38, 38, 0.45);
+    }
+    .cross-label {
+      display: block;
+      font-size: 0.62rem;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 2px;
+      padding: 1px 3px;
+      margin-bottom: 2px;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    /* Chart & Concept */
+    .chart-card { height: 380px; }
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      font-size: 0.84rem;
+    }
+    .concept-box {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 14px;
+      border: 1px solid var(--border);
+    }
+    .concept-box h4 {
+      font-size: 0.88rem;
+      margin-bottom: 6px;
+      color: var(--primary);
+    }
+    .math-formula {
+      font-family: "Courier New", Courier, monospace;
+      background: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: #b91c1c;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>ISO 2859-1 (KS Q ISO 2859-1) AQL 합불판정 계산기</h1>
+    <p class="subtitle">로트별 합격품질한계(AQL) 보통검사 1회 샘플링 방식 및 표 1·표 2 시각적 교차점 하이라이트 시스템</p>
+    <p class="rule-ref">VD 출하검사 업무규칙(DAQ4-0137K)/전사 출하검사 업무규칙(00Q4-0007K): G-I, 치명 0.01,중 0.01,경 1.5(제품에따라 센터 협의可)</p>
+  </header>
+
+  <!-- 컨트롤 입력부 -->
+  <section class="card">
+    <div class="controls-grid">
+      <div class="form-group">
+        <label for="lotSizeInput">Lot 크기 (N)</label>
+        <input type="text" id="lotSizeInput" value="250" placeholder="예: 250">
+      </div>
+      <div class="form-group">
+        <label for="inspLevelSelect">검사수준 (Inspection Level)</label>
+        <select id="inspLevelSelect">
+          <optgroup label="일반 검사수준 (General)">
+            <option value="I" selected>수준 I (G-I : 출하검사 표준규칙)</option>
+            <option value="II">수준 II (G-II : 표준 보통검사)</option>
+            <option value="III">수준 III (G-III : 엄격검사)</option>
+          </optgroup>
+          <optgroup label="특별 검사수준 (Special)">
+            <option value="S1">수준 S-1</option>
+            <option value="S2">수준 S-2</option>
+            <option value="S3">수준 S-3</option>
+            <option value="S4">수준 S-4</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="form-group v-divider">
+        <label for="aqlCritInput">치명결점 (Critical) AQL</label>
+        <div class="input-row">
+          <input type="number" step="0.01" min="0" id="aqlCritInput" value="0.10">
+          <select id="aqlCritSelect" onchange="syncAQL('Crit', this.value)"></select>
+        </div>
+      </div>
+
+      <div class="form-group v-divider">
+        <label for="aqlMajInput">중결점 (Major) AQL</label>
+        <div class="input-row">
+          <input type="number" step="0.01" min="0" id="aqlMajInput" value="0.10">
+          <select id="aqlMajSelect" onchange="syncAQL('Maj', this.value)"></select>
+        </div>
+      </div>
+
+      <div class="form-group v-divider">
+        <label for="aqlMinInput">경결점 (Minor) AQL</label>
+        <div class="input-row">
+          <input type="number" step="0.01" min="0" id="aqlMinInput" value="0.65">
+          <select id="aqlMinSelect" onchange="syncAQL('Min', this.value)"></select>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KPI 결과 카드: 기준문자 -> 유효문자 직관적 병기 -->
+  <section class="kpi-grid">
+    <!-- 치명결점 -->
+    <div class="card kpi-card crit">
+      <div class="kpi-title">
+        <span>치명결점 (Critical)</span>
+        <span class="badge badge-crit" id="badgeCrit">AQL 0.10</span>
+      </div>
+      <div class="kpi-metrics">
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resCritLetter" style="font-size:1.02rem;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">표본크기(n)</div>
+          <div class="kpi-metric-val" id="resCritN">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">합격(Ac)</div>
+          <div class="kpi-metric-val" id="resCritAc" style="color:#16a34a;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">불합격(Re)</div>
+          <div class="kpi-metric-val" id="resCritRe" style="color:#dc2626;">-</div>
+        </div>
+      </div>
+      <div class="kpi-arrow-info" id="arrowInfoCrit"></div>
+      <div class="tester-row">
+        <label>발견 결점:</label>
+        <input type="number" min="0" value="0" id="defCritInput" oninput="runVerdict()">
+        <span class="verdict pass" id="verdictCrit">합격</span>
+      </div>
+    </div>
+
+    <!-- 중결점 -->
+    <div class="card kpi-card maj">
+      <div class="kpi-title">
+        <span>중결점 (Major)</span>
+        <span class="badge badge-maj" id="badgeMaj">AQL 0.10</span>
+      </div>
+      <div class="kpi-metrics">
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resMajLetter" style="font-size:1.02rem;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">표본크기(n)</div>
+          <div class="kpi-metric-val" id="resMajN">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">합격(Ac)</div>
+          <div class="kpi-metric-val" id="resMajAc" style="color:#16a34a;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">불합격(Re)</div>
+          <div class="kpi-metric-val" id="resMajRe" style="color:#dc2626;">-</div>
+        </div>
+      </div>
+      <div class="kpi-arrow-info" id="arrowInfoMaj"></div>
+      <div class="tester-row">
+        <label>발견 결점:</label>
+        <input type="number" min="0" value="0" id="defMajInput" oninput="runVerdict()">
+        <span class="verdict pass" id="verdictMaj">합격</span>
+      </div>
+    </div>
+
+    <!-- 경결점 -->
+    <div class="card kpi-card min">
+      <div class="kpi-title">
+        <span>경결점 (Minor)</span>
+        <span class="badge badge-min" id="badgeMin">AQL 0.65</span>
+      </div>
+      <div class="kpi-metrics">
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resMinLetter" style="font-size:1.02rem;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">표본크기(n)</div>
+          <div class="kpi-metric-val" id="resMinN">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">합격(Ac)</div>
+          <div class="kpi-metric-val" id="resMinAc" style="color:#16a34a;">-</div>
+        </div>
+        <div class="kpi-metric-box">
+          <div class="kpi-metric-label">불합격(Re)</div>
+          <div class="kpi-metric-val" id="resMinRe" style="color:#dc2626;">-</div>
+        </div>
+      </div>
+      <div class="kpi-arrow-info" id="arrowInfoMin"></div>
+      <div class="tester-row">
+        <label>발견 결점:</label>
+        <input type="number" min="0" value="0" id="defMinInput" oninput="runVerdict()">
+        <span class="verdict pass" id="verdictMin">합격</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- [표 1] 및 [표 2] 분할 뷰 -->
+  <section class="tables-layout">
+    <!-- [표 1] 샘플문자표 -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div>
+          <h3 style="font-size:0.92rem; font-weight:700;">[표 1] 표본 크기 글자 부호 (샘플문자표)</h3>
+          <!-- <span style="font-size:0.72rem; color:#b91c1c; font-weight:700;">■ 입력 매칭 행·열 음영 / 교차점 진하게 (AQL 0 입력 시 음영 제외)</span> -->
+        </div>
+        <!-- <a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_1" target="_blank" rel="noopener noreferrer">🔗 원본 표 1 이미지 보기</a> -->
+      </div>
+      <div class="table-container">
+        <table id="table1">
+          <thead>
+            <tr>
+              <th rowspan="2" class="sticky-col">로트 크기 범위</th>
+              <th colspan="4">특별검사수준</th>
+              <th colspan="3">일반검사수준</th>
+            </tr>
+            <tr>
+              <th data-t1-col="S1" id="t1-th-S1">S-1</th>
+              <th data-t1-col="S2" id="t1-th-S2">S-2</th>
+              <th data-t1-col="S3" id="t1-th-S3">S-3</th>
+              <th data-t1-col="S4" id="t1-th-S4">S-4</th>
+              <th data-t1-col="I"  id="t1-th-I">I</th>
+              <th data-t1-col="II" id="t1-th-II">II</th>
+              <th data-t1-col="III" id="t1-th-III">III</th>
+            </tr>
+          </thead>
+          <tbody id="table1Body">
+            <tr id="t1-r-0"><td class="sticky-col">2 ~ 8</td><td data-t1-c="S1" id="t1-cell-0-S1">A</td><td data-t1-c="S2" id="t1-cell-0-S2">A</td><td data-t1-c="S3" id="t1-cell-0-S3">A</td><td data-t1-c="S4" id="t1-cell-0-S4">A</td><td data-t1-c="I" id="t1-cell-0-I">A</td><td data-t1-c="II" id="t1-cell-0-II">A</td><td data-t1-c="III" id="t1-cell-0-III">B</td></tr>
+            <tr id="t1-r-1"><td class="sticky-col">9 ~ 15</td><td data-t1-c="S1" id="t1-cell-1-S1">A</td><td data-t1-c="S2" id="t1-cell-1-S2">A</td><td data-t1-c="S3" id="t1-cell-1-S3">A</td><td data-t1-c="S4" id="t1-cell-1-S4">A</td><td data-t1-c="I" id="t1-cell-1-I">A</td><td data-t1-c="II" id="t1-cell-1-II">B</td><td data-t1-c="III" id="t1-cell-1-III">C</td></tr>
+            <tr id="t1-r-2"><td class="sticky-col">16 ~ 25</td><td data-t1-c="S1" id="t1-cell-2-S1">A</td><td data-t1-c="S2" id="t1-cell-2-S2">A</td><td data-t1-c="S3" id="t1-cell-2-S3">B</td><td data-t1-c="S4" id="t1-cell-2-S4">B</td><td data-t1-c="I" id="t1-cell-2-I">B</td><td data-t1-c="II" id="t1-cell-2-II">C</td><td data-t1-c="III" id="t1-cell-2-III">D</td></tr>
+            <tr id="t1-r-3"><td class="sticky-col">26 ~ 50</td><td data-t1-c="S1" id="t1-cell-3-S1">A</td><td data-t1-c="S2" id="t1-cell-3-S2">B</td><td data-t1-c="S3" id="t1-cell-3-S3">B</td><td data-t1-c="S4" id="t1-cell-3-S4">C</td><td data-t1-c="I" id="t1-cell-3-I">C</td><td data-t1-c="II" id="t1-cell-3-II">D</td><td data-t1-c="III" id="t1-cell-3-III">E</td></tr>
+            <tr id="t1-r-4"><td class="sticky-col">51 ~ 90</td><td data-t1-c="S1" id="t1-cell-4-S1">B</td><td data-t1-c="S2" id="t1-cell-4-S2">B</td><td data-t1-c="S3" id="t1-cell-4-S3">C</td><td data-t1-c="S4" id="t1-cell-4-S4">C</td><td data-t1-c="I" id="t1-cell-4-I">C</td><td data-t1-c="II" id="t1-cell-4-II">E</td><td data-t1-c="III" id="t1-cell-4-III">F</td></tr>
+            <tr id="t1-r-5"><td class="sticky-col">91 ~ 150</td><td data-t1-c="S1" id="t1-cell-5-S1">B</td><td data-t1-c="S2" id="t1-cell-5-S2">B</td><td data-t1-c="S3" id="t1-cell-5-S3">C</td><td data-t1-c="S4" id="t1-cell-5-S4">D</td><td data-t1-c="I" id="t1-cell-5-I">D</td><td data-t1-c="II" id="t1-cell-5-II">F</td><td data-t1-c="III" id="t1-cell-5-III">G</td></tr>
+            <tr id="t1-r-6"><td class="sticky-col">151 ~ 280</td><td data-t1-c="S1" id="t1-cell-6-S1">B</td><td data-t1-c="S2" id="t1-cell-6-S2">C</td><td data-t1-c="S3" id="t1-cell-6-S3">D</td><td data-t1-c="S4" id="t1-cell-6-S4">E</td><td data-t1-c="I" id="t1-cell-6-I">E</td><td data-t1-c="II" id="t1-cell-6-II">G</td><td data-t1-c="III" id="t1-cell-6-III">H</td></tr>
+            <tr id="t1-r-7"><td class="sticky-col">281 ~ 500</td><td data-t1-c="S1" id="t1-cell-7-S1">B</td><td data-t1-c="S2" id="t1-cell-7-S2">C</td><td data-t1-c="S3" id="t1-cell-7-S3">D</td><td data-t1-c="S4" id="t1-cell-7-S4">E</td><td data-t1-c="I" id="t1-cell-7-I">F</td><td data-t1-c="II" id="t1-cell-7-II">H</td><td data-t1-c="III" id="t1-cell-7-III">J</td></tr>
+            <tr id="t1-r-8"><td class="sticky-col">501 ~ 1,200</td><td data-t1-c="S1" id="t1-cell-8-S1">C</td><td data-t1-c="S2" id="t1-cell-8-S2">C</td><td data-t1-c="S3" id="t1-cell-8-S3">E</td><td data-t1-c="S4" id="t1-cell-8-S4">F</td><td data-t1-c="I" id="t1-cell-8-I">G</td><td data-t1-c="II" id="t1-cell-8-II">J</td><td data-t1-c="III" id="t1-cell-8-III">K</td></tr>
+            <tr id="t1-r-9"><td class="sticky-col">1,201 ~ 3,200</td><td data-t1-c="S1" id="t1-cell-9-S1">C</td><td data-t1-c="S2" id="t1-cell-9-S2">D</td><td data-t1-c="S3" id="t1-cell-9-S3">E</td><td data-t1-c="S4" id="t1-cell-9-S4">G</td><td data-t1-c="I" id="t1-cell-9-I">H</td><td data-t1-c="II" id="t1-cell-9-II">K</td><td data-t1-c="III" id="t1-cell-9-III">L</td></tr>
+            <tr id="t1-r-10"><td class="sticky-col">3,201 ~ 10,000</td><td data-t1-c="S1" id="t1-cell-10-S1">C</td><td data-t1-c="S2" id="t1-cell-10-S2">D</td><td data-t1-c="S3" id="t1-cell-10-S3">F</td><td data-t1-c="S4" id="t1-cell-10-S4">H</td><td data-t1-c="I" id="t1-cell-10-I">J</td><td data-t1-c="II" id="t1-cell-10-II">L</td><td data-t1-c="III" id="t1-cell-10-III">M</td></tr>
+            <tr id="t1-r-11"><td class="sticky-col">10,001 ~ 35,000</td><td data-t1-c="S1" id="t1-cell-11-S1">C</td><td data-t1-c="S2" id="t1-cell-11-S2">D</td><td data-t1-c="S3" id="t1-cell-11-S3">F</td><td data-t1-c="S4" id="t1-cell-11-S4">J</td><td data-t1-c="I" id="t1-cell-11-I">K</td><td data-t1-c="II" id="t1-cell-11-II">M</td><td data-t1-c="III" id="t1-cell-11-III">N</td></tr>
+            <tr id="t1-r-12"><td class="sticky-col">35,001 ~ 150,000</td><td data-t1-c="S1" id="t1-cell-12-S1">D</td><td data-t1-c="S2" id="t1-cell-12-S2">E</td><td data-t1-c="S3" id="t1-cell-12-S3">G</td><td data-t1-c="S4" id="t1-cell-12-S4">K</td><td data-t1-c="I" id="t1-cell-12-I">L</td><td data-t1-c="II" id="t1-cell-12-II">N</td><td data-t1-c="III" id="t1-cell-12-III">P</td></tr>
+            <tr id="t1-r-13"><td class="sticky-col">150,001 ~ 500,000</td><td data-t1-c="S1" id="t1-cell-13-S1">D</td><td data-t1-c="S2" id="t1-cell-13-S2">E</td><td data-t1-c="S3" id="t1-cell-13-S3">G</td><td data-t1-c="S4" id="t1-cell-13-S4">L</td><td data-t1-c="I" id="t1-cell-13-I">M</td><td data-t1-c="II" id="t1-cell-13-II">P</td><td data-t1-c="III" id="t1-cell-13-III">Q</td></tr>
+            <tr id="t1-r-14"><td class="sticky-col">500,001 이상</td><td data-t1-c="S1" id="t1-cell-14-S1">D</td><td data-t1-c="S2" id="t1-cell-14-S2">E</td><td data-t1-c="S3" id="t1-cell-14-S3">H</td><td data-t1-c="S4" id="t1-cell-14-S4">M</td><td data-t1-c="I" id="t1-cell-14-I">N</td><td data-t1-c="II" id="t1-cell-14-II">Q</td><td data-t1-c="III" id="t1-cell-14-III">R</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- [표 2] 주 샘플링표 -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <h3 style="font-size:0.92rem; font-weight:700;">[표 2] 보통검사의 1회 샘플링 방식 (주 샘플링표)</h3>
+          <div style="display:flex; gap:6px; font-size:0.72rem; font-weight:700;">
+            <span style="color:#dc2626;">● 치명</span>
+            <span style="color:#ea580c;">● 중</span>
+            <span style="color:#2563eb;">● 경</span>
+          </div>
+        </div>
+        <!-- <a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_2" target="_blank" rel="noopener noreferrer">🔗 원본 표 2 이미지 보기</a> -->
+      </div>
+      <div class="table-container">
+        <table id="table2">
+          <thead>
+            <tr id="table2HeadRow">
+              <th class="sticky-col">문자</th>
+              <th class="sticky-n">시료(n)</th>
+            </tr>
+          </thead>
+          <tbody id="table2Body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- OC Curve 영역 -->
+  <section class="card chart-card">
+    <h3 style="font-size:0.92rem; font-weight:700; margin-bottom:6px;">검사특성곡선 (OC Curve, Operating Characteristic Curve)</h3>
+    <div style="position:relative; width:100%; height:310px;" id="chartWrapper">
+      <canvas id="ocChartCanvas"></canvas>
+    </div>
+  </section>
+
+  <!-- 이론 요약 -->
+  <section class="card">
+    <h3 style="font-size:0.95rem; font-weight:700; margin-bottom:12px;">핵심 수식 및 통계품질 이론 요약</h3>
+    <div class="concept-grid">
+      <div class="concept-box">
+        <h4>1. 합격(Ac) 및 불합격(Re) 판정 조건</h4>
+        <p>표본 크기 <span class="math-formula">n</span> 중 발견 결점수 <span class="math-formula">d</span>에 대해:</p>
+        <p>• <strong>합격 (Acceptance):</strong> <span class="math-formula">d ≤ Ac</span></p>
+        <p>• <strong>불합격 (Rejection):</strong> <span class="math-formula">d ≥ Re</span> (보통검사 1회 기준 <span class="math-formula">Re = Ac + 1</span>)</p>
+      </div>
+
+      <div class="concept-box">
+        <h4>2. 화살표 규칙 (ISO 2859-1 제10.3절 규정)</h4>
+        <p>• <strong>아래 화살표 (↓):</strong> 화살표 바로 아래의 첫 번째 샘플링 방식 채택 (표본 크기 <span class="math-formula">n</span> 및 시료문자도 변경된 행의 값 적용)</p>
+        <p>• <strong>위 화살표 (↑):</strong> 화살표 바로 위의 첫 번째 방식 채택 (표본 크기 <span class="math-formula">n</span> 및 시료문자도 해당 행의 값 적용)</p>
+        <p>• 표본 크기 <span class="math-formula">n ≥ N</span>(로트 크기)일 경우 100% 전수 검사 수행</p>
+      </div>
+
+      <div class="concept-box">
+        <h4>3. OC 곡선 포아송 누적 확률 모델</h4>
+        <p>불량률이 <span class="math-formula">p</span>일 때 합격확률 <span class="math-formula">P_a(p)</span> 계산 공식 (<span class="math-formula">λ = n · p</span>):</p>
+        <div style="margin:4px 0;"><span class="math-formula">P_a(p) = \sum_{k=0}^{Ac} \frac{e^{-np} (np)^k}{k!}</span></div>
+        <p>AQL 지점에서 생산자 위험 <span class="math-formula">α ≈ 0.05</span> (합격확률 약 95% 보장)</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+/**
+ * 1. ISO 2859-1 마스터 데이터 정의
+ */
+var LOT_RANGES = [
+  { min: 2, max: 8, letters: { S1: 'A', S2: 'A', S3: 'A', S4: 'A', I: 'A', II: 'A', III: 'B' } },
+  { min: 9, max: 15, letters: { S1: 'A', S2: 'A', S3: 'A', S4: 'A', I: 'A', II: 'B', III: 'C' } },
+  { min: 16, max: 25, letters: { S1: 'A', S2: 'A', S3: 'B', S4: 'B', I: 'B', II: 'C', III: 'D' } },
+  { min: 26, max: 50, letters: { S1: 'A', S2: 'B', S3: 'B', S4: 'C', I: 'C', II: 'D', III: 'E' } },
+  { min: 51, max: 90, letters: { S1: 'B', S2: 'B', S3: 'C', S4: 'C', I: 'C', II: 'E', III: 'F' } },
+  { min: 91, max: 150, letters: { S1: 'B', S2: 'B', S3: 'C', S4: 'D', I: 'D', II: 'F', III: 'G' } },
+  { min: 151, max: 280, letters: { S1: 'B', S2: 'C', S3: 'D', S4: 'E', I: 'E', II: 'G', III: 'H' } },
+  { min: 281, max: 500, letters: { S1: 'B', S2: 'C', S3: 'D', S4: 'E', I: 'F', II: 'H', III: 'J' } },
+  { min: 501, max: 1200, letters: { S1: 'C', S2: 'C', S3: 'E', S4: 'F', I: 'G', II: 'J', III: 'K' } },
+  { min: 1201, max: 3200, letters: { S1: 'C', S2: 'D', S3: 'E', S4: 'G', I: 'H', II: 'K', III: 'L' } },
+  { min: 3201, max: 10000, letters: { S1: 'C', S2: 'D', S3: 'F', S4: 'H', I: 'J', II: 'L', III: 'M' } },
+  { min: 10001, max: 35000, letters: { S1: 'C', S2: 'D', S3: 'F', S4: 'J', I: 'K', II: 'M', III: 'N' } },
+  { min: 35001, max: 150000, letters: { S1: 'D', S2: 'E', S3: 'G', S4: 'K', I: 'L', II: 'N', III: 'P' } },
+  { min: 150001, max: 500000, letters: { S1: 'D', S2: 'E', S3: 'G', S4: 'L', I: 'M', II: 'P', III: 'Q' } },
+  { min: 500001, max: Infinity, letters: { S1: 'D', S2: 'E', S3: 'H', S4: 'M', I: 'N', II: 'Q', III: 'R' } }
+];
+
+var CODE_LETTERS = "A,B,C,D,E,F,G,H,J,K,L,M,N,P,Q,R".split(",");
+var SAMPLE_SIZES = "2,3,5,8,13,20,32,50,80,125,200,315,500,800,1250,2000".split(",").map(Number);
+var AQL_SERIES = "0.010,0.015,0.025,0.040,0.065,0.10,0.15,0.25,0.40,0.65,1.0,1.5,2.5,4.0,6.5,10.0".split(",").map(Number);
+
+var AC_RE_MAP = {
+  14: { ac: 0, re: 1 },
+  15: { ac: 1, re: 2 },
+  16: { ac: 2, re: 3 },
+  17: { ac: 3, re: 4 },
+  18: { ac: 5, re: 6 },
+  19: { ac: 7, re: 8 },
+  20: { ac: 10, re: 11 },
+  21: { ac: 14, re: 15 },
+  22: { ac: 21, re: 22 }
+};
+
+var ocChart = null;
+
+function parseNumberWithComma(str) {
+  if (typeof str === 'number') return str;
+  return parseFloat(String(str).replace(/,/g, '')) || 0;
+}
+
+function formatWithComma(num) {
+  if (isNaN(num)) return "0";
+  var parts = String(num).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+
+function parseAqlInput(inputId, defaultVal) {
+  var el = document.getElementById(inputId);
+  if (!el) return defaultVal;
+  var raw = el.value.trim();
+  if (raw === "") return defaultVal;
+  var parsed = parseFloat(raw);
+  return isNaN(parsed) ? defaultVal : parsed;
+}
+
+function findClosestAQLIndex(aql) {
+  var closestIdx = 0;
+  var minDiff = Infinity;
+  for (var i = 0; i < AQL_SERIES.length; i++) {
+    var diff = Math.abs(AQL_SERIES[i] - aql);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIdx = i;
+    }
+  }
+  return closestIdx;
+}
+
+function resolvePlan(initLetter, targetAql, lotSize) {
+  var rowIdx = CODE_LETTERS.indexOf(initLetter);
+  var effN = SAMPLE_SIZES[rowIdx];
+
+  if (targetAql === 0) {
+    return {
+      initialLetter: initLetter,
+      initialRowIdx: rowIdx,
+      effectiveLetter: initLetter,
+      effectiveRowIdx: rowIdx,
+      n: effN,
+      ac: 0,
+      re: 1,
+      arrow: null,
+      colIdx: -1,
+      matchedAql: 0,
+      isZeroAql: true,
+      isFullInspection: false
+    };
+  }
+
+  var colIdx = findClosestAQLIndex(targetAql);
+  var matchedAql = AQL_SERIES[colIdx];
+
+  var sumIndex = rowIdx + colIdx;
+  var effRowIdx = rowIdx;
+  var arrowDirection = null;
+
+  if (sumIndex < 14) {
+    effRowIdx = 14 - colIdx;
+    arrowDirection = 'down';
+  } else if (sumIndex > 22) {
+    effRowIdx = 22 - colIdx;
+    arrowDirection = 'up';
+  }
+
+  effRowIdx = Math.max(0, Math.min(CODE_LETTERS.length - 1, effRowIdx));
+
+  var effLetter = CODE_LETTERS[effRowIdx];
+  effN = SAMPLE_SIZES[effRowIdx];
+  var finalSum = effRowIdx + colIdx;
+  var plan = AC_RE_MAP[finalSum] || { ac: 0, re: 1 };
+
+  var isFullInspection = false;
+  if (effN >= lotSize) {
+    effN = lotSize;
+    isFullInspection = true;
+  }
+
+  return {
+    initialLetter: initLetter,
+    initialRowIdx: rowIdx,
+    effectiveLetter: effLetter,
+    effectiveRowIdx: effRowIdx,
+    n: effN,
+    ac: plan.ac,
+    re: plan.re,
+    arrow: arrowDirection,
+    colIdx: colIdx,
+    matchedAql: matchedAql,
+    isZeroAql: false,
+    isFullInspection: isFullInspection
+  };
+}
+
+function poissonCdf(k, lambda) {
+  if (lambda <= 0) return 1.0;
+  var sum = 0;
+  var term = Math.exp(-lambda);
+  sum += term;
+  for (var i = 1; i <= k; i++) {
+    term *= (lambda / i);
+    sum += term;
+  }
+  return Math.min(1.0, Math.max(0.0, sum));
+}
+
+/**
+ * [표 2] 동적 빌드
+ */
+function buildTable2() {
+  var headerRow = document.getElementById('table2HeadRow');
+  headerRow.innerHTML = '<th class="sticky-col">문자</th><th class="sticky-n">시료(n)</th>';
+  
+  AQL_SERIES.forEach(function(aql, cIdx) {
+    var th = document.createElement('th');
+    th.textContent = aql.toFixed(aql < 0.1 ? 3 : 2);
+    th.id = 't2-h-' + cIdx;
+    th.setAttribute('data-t2-c', cIdx);
+    headerRow.appendChild(th);
+  });
+
+  var tbody = document.getElementById('table2Body');
+  tbody.innerHTML = '';
+  CODE_LETTERS.forEach(function(letter, rIdx) {
+    var tr = document.createElement('tr');
+    tr.id = 't2-r-' + rIdx;
+    var n = SAMPLE_SIZES[rIdx];
+    var html = '<td class="sticky-col">' + letter + '</td><td class="sticky-n">' + n + '</td>';
+
+    AQL_SERIES.forEach(function(aql, cIdx) {
+      var sum = rIdx + cIdx;
+      var text = "";
+      if (sum < 14) text = "↓";
+      else if (sum > 22) text = "↑";
+      else {
+        var p = AC_RE_MAP[sum];
+        text = p.ac + ' / ' + p.re;
+      }
+      html += '<td id="t2-c-' + rIdx + '-' + cIdx + '" data-t2-r="' + rIdx + '" data-t2-c="' + cIdx + '">' + text + '</td>';
+    });
+
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  });
+}
+
+function initAQLDropdowns() {
+  ['Crit', 'Maj', 'Min'].forEach(function(type) {
+    var sel = document.getElementById('aql' + type + 'Select');
+    sel.innerHTML = '<option value="">선택</option><option value="0">0.00 (Zero Defect)</option>';
+    AQL_SERIES.forEach(function(val) {
+      var opt = document.createElement('option');
+      opt.value = val.toFixed(val < 0.1 ? 3 : 2);
+      opt.textContent = val.toFixed(val < 0.1 ? 3 : 2);
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function syncAQL(type, val) {
+  if (val === "") return;
+  document.getElementById('aql' + type + 'Input').value = parseFloat(val).toFixed(2);
+  calculateAll();
+}
+
+/**
+ * 계산 및 시각화 동기화
+ */
+function calculateAll() {
+  var lotSizeRaw = parseNumberWithComma(document.getElementById('lotSizeInput').value);
+  var lotSize = Math.max(2, lotSizeRaw);
+  var inspLevel = document.getElementById('inspLevelSelect').value;
+
+  var critAql = parseAqlInput('aqlCritInput', 0.10);
+  var majAql = parseAqlInput('aqlMajInput', 0.10);
+  var minAql = parseAqlInput('aqlMinInput', 0.65);
+
+  var lotRowIdx = LOT_RANGES.findIndex(function(r) { return lotSize >= r.min && lotSize <= r.max; });
+  if (lotRowIdx === -1) lotRowIdx = LOT_RANGES.length - 1;
+  var initialLetter = LOT_RANGES[lotRowIdx].letters[inspLevel];
+
+  var planCrit = resolvePlan(initialLetter, critAql, lotSize);
+  var planMaj = resolvePlan(initialLetter, majAql, lotSize);
+  var planMin = resolvePlan(initialLetter, minAql, lotSize);
+
+  updateCard('Crit', planCrit);
+  updateCard('Maj', planMaj);
+  updateCard('Min', planMin);
+
+  var isAllZero = (planCrit.isZeroAql && planMaj.isZeroAql && planMin.isZeroAql);
+
+  renderTable1Highlight(lotRowIdx, inspLevel, isAllZero);
+
+  renderTable2Highlight(initialLetter, [
+    { name: '치명', plan: planCrit },
+    { name: '중',   plan: planMaj },
+    { name: '경',   plan: planMin }
+  ], isAllZero);
+
+  updateOCCurve([
+    { label: '치명(Critical)', plan: planCrit, color: '#dc2626' },
+    { label: '중(Major)',    plan: planMaj,  color: '#ea580c' },
+    { label: '경(Minor)',    plan: planMin,  color: '#2563eb' }
+  ]);
+
+  runVerdict();
+}
+
+function renderTable1Highlight(rIdx, level, isAllZero) {
+  document.querySelectorAll('#table1 tr').forEach(function(tr) { tr.classList.remove('hl-row'); });
+  document.querySelectorAll('#table1 th, #table1 td').forEach(function(el) { el.classList.remove('hl-col', 'hl-cross'); });
+
+  if (isAllZero) return;
+
+  var targetRow = document.getElementById('t1-r-' + rIdx);
+  if (targetRow) targetRow.classList.add('hl-row');
+
+  var th = document.getElementById('t1-th-' + level);
+  if (th) th.classList.add('hl-col');
+  document.querySelectorAll('#table1 td[data-t1-c="' + level + '"]').forEach(function(el) { el.classList.add('hl-col'); });
+
+  var crossCell = document.getElementById('t1-cell-' + rIdx + '-' + level);
+  if (crossCell) {
+    crossCell.classList.add('hl-cross');
+  }
+}
+
+function renderTable2Highlight(initialLetter, aqlPlans, isAllZero) {
+  document.querySelectorAll('#table2 tr').forEach(function(tr) {
+    tr.classList.remove('hl-row', 'hl-base-row');
+  });
+  document.querySelectorAll('#table2 th, #table2 td').forEach(function(el) {
+    el.classList.remove('hl-col', 'hl-cross');
+    var tag = el.querySelector('.cross-label');
+    if (tag) tag.remove();
+  });
+
+  if (isAllZero) return;
+
+  var activePlans = aqlPlans.filter(function(item) { return !item.plan.isZeroAql; });
+
+  // 원래 기준 행(Table 1 도출 행)을 파란 테두리로 표시
+  var baseRowIdx = CODE_LETTERS.indexOf(initialLetter);
+  var baseRow = document.getElementById('t2-r-' + baseRowIdx);
+  if (baseRow) baseRow.classList.add('hl-base-row');
+
+  activePlans.forEach(function(item) {
+    var p = item.plan;
+    
+    // 유효 행(화살표 이동 후 행) 붉은 음영
+    var effRow = document.getElementById('t2-r-' + p.effectiveRowIdx);
+    if (effRow) effRow.classList.add('hl-row');
+
+    // 해당 AQL 열 붉은 음영
+    var th = document.getElementById('t2-h-' + p.colIdx);
+    if (th) th.classList.add('hl-col');
+    document.querySelectorAll('#table2 td[data-t2-c="' + p.colIdx + '"]').forEach(function(td) { td.classList.add('hl-col'); });
+
+    // 교차점 셀 진하게 강조
+    var crossCell = document.getElementById('t2-c-' + p.effectiveRowIdx + '-' + p.colIdx);
+    if (crossCell) {
+      crossCell.classList.add('hl-cross');
+      
+      var existingLabel = crossCell.querySelector('.cross-label');
+      if (existingLabel) {
+        if (!existingLabel.textContent.includes(item.name)) {
+          existingLabel.textContent += '·' + item.name;
+        }
+      } else {
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'cross-label';
+        labelSpan.textContent = '[' + item.name + ']';
+        crossCell.insertBefore(labelSpan, crossCell.firstChild);
+      }
+    }
+  });
+}
+
+function updateCard(type, plan) {
+  var badge = document.getElementById('badge' + type);
+  var arrowEl = document.getElementById('arrowInfo' + type);
+  var letterEl = document.getElementById('res' + type + 'Letter');
+
+  if (plan.isZeroAql) {
+    badge.textContent = 'AQL 0.00 (결점불허)';
+    badge.className = 'badge badge-zero';
+    letterEl.textContent = plan.initialLetter;
+    arrowEl.textContent = '※ AQL 0 입력: 결점 불허(Ac=0, Re=1) 무결점 판정 적용 (판정표 음영 제외)';
+  } else {
+    badge.textContent = 'AQL ' + plan.matchedAql.toFixed(2);
+    badge.className = 'badge badge-' + type.toLowerCase();
+    
+    // 기준문자 -> 유효문자 직관적 병기
+    if (plan.arrow) {
+      letterEl.innerHTML = '<span style="color:#64748b; font-size:0.85rem; text-decoration:line-through;">' + plan.initialLetter + '</span> → <span style="color:#b91c1c; font-weight:800;">' + plan.effectiveLetter + '</span>';
+      
+      if (plan.arrow === 'down') {
+        arrowEl.textContent = '※ ISO 2859-1 제10.3절 화살표(↓): 표본크기 및 문자가 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)]로 변경 적용';
+      } else {
+        arrowEl.textContent = '※ ISO 2859-1 제10.3절 화살표(↑): 표본크기 및 문자가 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)]로 변경 적용';
+      }
+    } else {
+      letterEl.textContent = plan.initialLetter;
+      arrowEl.textContent = plan.isFullInspection ? "※ 표본 크기가 로트 크기 이상이므로 100% 전수검사" : "";
+    }
+  }
+
+  document.getElementById('res' + type + 'N').textContent = formatWithComma(plan.n);
+  document.getElementById('res' + type + 'Ac').textContent = plan.ac;
+  document.getElementById('res' + type + 'Re').textContent = plan.re;
+}
+
+function updateOCCurve(datasetConfigs) {
+  var canvas = document.getElementById('ocChartCanvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  var pointsCount = 45;
+  var maxP = 10.0;
+  var labels = [];
+  for (var i = 0; i <= pointsCount; i++) {
+    var p = (i * (maxP / pointsCount));
+    labels.push(p.toFixed(2));
+  }
+
+  var datasets = datasetConfigs.map(function(cfg) {
+    var data = labels.map(function(pVal) {
+      var pRatio = parseFloat(pVal) / 100.0;
+      var lambda = cfg.plan.n * pRatio;
+      var prob = poissonCdf(cfg.plan.ac, lambda) * 100.0;
+      return prob.toFixed(1);
+    });
+
+    return {
+      label: cfg.label + ' (n=' + cfg.plan.n + ', Ac=' + cfg.plan.ac + (cfg.plan.isZeroAql ? ', AQL 0' : '') + ')',
+      data: data,
+      borderColor: cfg.color,
+      backgroundColor: cfg.color,
+      tension: 0.25,
+      borderWidth: 2.2,
+      pointRadius: 0
+    };
+  });
+
+  if (ocChart) {
+    ocChart.destroy();
+  }
+
+  var ctx = canvas.getContext('2d');
+  ocChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            title: function(items) { return '로트 불량률 (p): ' + items[0].label + '%'; },
+            label: function(item) { return ' ' + item.dataset.label + ': 합격확률(Pa) ' + item.parsed.y + '%'; }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: '로트 불량률 (Defect Rate p, %)', font: { weight: 'bold', size: 11 } },
+          ticks: { maxTicksLimit: 12 }
+        },
+        y: {
+          min: 0,
+          max: 100,
+          title: { display: true, text: '로트 합격확률 (Pa, %)', font: { weight: 'bold', size: 11 } },
+          ticks: { stepSize: 20 }
+        }
+      }
+    }
+  });
+}
+
+function runVerdict() {
+  ['Crit', 'Maj', 'Min'].forEach(function(type) {
+    var found = parseInt(document.getElementById('def' + type + 'Input').value) || 0;
+    var ac = parseInt(document.getElementById('res' + type + 'Ac').textContent) || 0;
+    var badge = document.getElementById('verdict' + type);
+
+    if (found <= ac) {
+      badge.textContent = '합격 (Pass: ' + found + ' ≤ ' + ac + ')';
+      badge.className = 'verdict pass';
+    } else {
+      badge.textContent = '불합격 (Reject: ' + found + ' > ' + ac + ')';
+      badge.className = 'verdict fail';
+    }
+  });
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+  buildTable2();
+  initAQLDropdowns();
+
+  var lotInput = document.getElementById('lotSizeInput');
+  lotInput.addEventListener('input', function(e) {
+    var raw = e.target.value.replace(/,/g, '');
+    if (!/^\d*\.?\d*$/.test(raw)) {
+      raw = raw.replace(/[^\d.]/g, '');
+    }
+    var parts = raw.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    e.target.value = parts.join('.');
+    calculateAll();
+  });
+
+  document.getElementById('inspLevelSelect').addEventListener('change', calculateAll);
+  document.getElementById('aqlCritInput').addEventListener('input', calculateAll);
+  document.getElementById('aqlMajInput').addEventListener('input', calculateAll);
+  document.getElementById('aqlMinInput').addEventListener('input', calculateAll);
+
+  calculateAll();
+});
+</script>
+
+</body>
+</html>
