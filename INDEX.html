@@ -1,11 +1,12 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ISO 2859-1 AQL 합불판정 및 판정표 시각화 계산기</title>
-  <!-- Created by Juhan Bae, VD Global CS, 2026.09.18 -->
+  <!-- Version 2 -->
+  <!-- Created by Juhan Bae & Gemini, 2026/09/18 -->
+  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
@@ -18,8 +19,8 @@
       --text-muted: #64748b;
       
       /* 붉은 음영 및 교차점 하이라이트 색상 */
-      --hl-tint-row: #fee2e2;       /* 행 붉은 음영 (연한 빨강) */
-      --hl-tint-col: #fee2e2;       /* 열 붉은 음영 (연한 빨강) */
+      --hl-tint-row: #fee2e2;       /* 행 붉은 음영 */
+      --hl-tint-col: #fee2e2;       /* 열 붉은 음영 */
       --hl-tint-header: #fca5a5;    /* 헤더 붉은 음영 */
       --hl-cross-bg: #dc2626;       /* 교차점 진한 빨강 */
       --hl-cross-text: #ffffff;     /* 교차점 텍스트 흰색 */
@@ -79,7 +80,7 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
 
-    /* 상단 컨트롤 영역: 치명, 중, 경 AQL 세로선 구분 적용 */
+    /* 컨트롤 영역: 치명, 중, 경 세로선 구분 적용 */
     .controls-grid {
       display: grid;
       grid-template-columns: 1fr 1.1fr 1fr 1fr 1fr;
@@ -103,8 +104,6 @@
       color: var(--primary-light);
       text-transform: uppercase;
     }
-
-    /* 치명, 중, 경 입력 영역 세로선 구분 스타일 */
     .form-group.v-divider {
       border-left: 2px solid #cbd5e1;
       padding-left: 14px;
@@ -166,7 +165,7 @@
 
     .kpi-metrics {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: 1.3fr 1fr 1fr 1fr;
       text-align: center;
       gap: 4px;
       margin-top: 4px;
@@ -182,7 +181,7 @@
       font-weight: 600;
     }
     .kpi-metric-val {
-      font-size: 1.15rem;
+      font-size: 1.12rem;
       font-weight: 800;
       color: var(--primary);
     }
@@ -224,7 +223,7 @@
     .verdict.pass { background: #dcfce7; color: #166534; }
     .verdict.fail { background: #fee2e2; color: #991b1b; }
 
-    /* 표 1 및 표 2 레이아웃 */
+    /* 표 레이아웃 */
     .tables-layout {
       display: grid;
       grid-template-columns: 450px 1fr;
@@ -310,8 +309,9 @@
     .link-btn:hover { background: #dbeafe; }
 
     /* ========================================================
-       붉은 음영 및 교차점 하이라이트 스타일 (우선순위 완전 보장)
+       붉은 음영 및 교차점 하이라이트 스타일
        ======================================================== */
+    /* 유효 적용 행 (최종 샘플링 행) 음영 */
     tr.hl-row td {
       background-color: var(--hl-tint-row) !important;
     }
@@ -320,6 +320,12 @@
       background-color: var(--hl-tint-header) !important;
       color: #7f1d1d !important;
       font-weight: 800 !important;
+    }
+
+    /* 원래 기준 문자 행(Table 1 도출 행) 강조 표시: 파란 점선 테두리 */
+    tr.hl-base-row td.sticky-col {
+      outline: 2px dashed #2563eb !important;
+      outline-offset: -2px;
     }
 
     th.hl-col {
@@ -331,6 +337,7 @@
       background-color: var(--hl-tint-col) !important;
     }
 
+    /* 교차점 셀 */
     td.hl-cross {
       background-color: var(--hl-cross-bg) !important;
       color: var(--hl-cross-text) !important;
@@ -384,14 +391,13 @@
 <body>
 
 <div class="container">
-  <!-- 제목줄 영역 -->
   <header>
     <h1>ISO 2859-1 (KS Q ISO 2859-1) AQL 합불판정 계산기</h1>
     <p class="subtitle">로트별 합격품질한계(AQL) 보통검사 1회 샘플링 방식 및 표 1·표 2 시각적 교차점 하이라이트 시스템</p>
     <p class="rule-ref">VD 출하검사 업무규칙(DAQ4-0137K)/전사 출하검사 업무규칙(00Q4-0007K): G-I, 치명 0.01,중 0.01,경 1.5(제품에따라 센터 협의可)</p>
   </header>
 
-  <!-- 컨트롤 입력부 (치명, 중, 경 입력 영역 세로선 구분 추가) -->
+  <!-- 컨트롤 입력부 -->
   <section class="card">
     <div class="controls-grid">
       <div class="form-group">
@@ -415,25 +421,22 @@
         </select>
       </div>
 
-      <!-- 치명결점 입력 -->
       <div class="form-group v-divider">
         <label for="aqlCritInput">치명결점 (Critical) AQL</label>
         <div class="input-row">
-          <input type="number" step="0.01" min="0" id="aqlCritInput" value="0.00">
+          <input type="number" step="0.01" min="0" id="aqlCritInput" value="0.10">
           <select id="aqlCritSelect" onchange="syncAQL('Crit', this.value)"></select>
         </div>
       </div>
 
-      <!-- 중결점 입력 -->
       <div class="form-group v-divider">
         <label for="aqlMajInput">중결점 (Major) AQL</label>
         <div class="input-row">
-          <input type="number" step="0.01" min="0" id="aqlMajInput" value="0.00">
+          <input type="number" step="0.01" min="0" id="aqlMajInput" value="0.10">
           <select id="aqlMajSelect" onchange="syncAQL('Maj', this.value)"></select>
         </div>
       </div>
 
-      <!-- 경결점 입력 -->
       <div class="form-group v-divider">
         <label for="aqlMinInput">경결점 (Minor) AQL</label>
         <div class="input-row">
@@ -444,18 +447,18 @@
     </div>
   </section>
 
-  <!-- KPI 결과 카드 -->
+  <!-- KPI 결과 카드: 기준문자 -> 유효문자 직관적 병기 -->
   <section class="kpi-grid">
     <!-- 치명결점 -->
     <div class="card kpi-card crit">
       <div class="kpi-title">
         <span>치명결점 (Critical)</span>
-        <span class="badge badge-crit" id="badgeCrit">AQL 0.00</span>
+        <span class="badge badge-crit" id="badgeCrit">AQL 0.10</span>
       </div>
       <div class="kpi-metrics">
         <div class="kpi-metric-box">
-          <div class="kpi-metric-label">시료문자</div>
-          <div class="kpi-metric-val" id="resCritLetter">-</div>
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resCritLetter" style="font-size:1.02rem;">-</div>
         </div>
         <div class="kpi-metric-box">
           <div class="kpi-metric-label">표본크기(n)</div>
@@ -486,8 +489,8 @@
       </div>
       <div class="kpi-metrics">
         <div class="kpi-metric-box">
-          <div class="kpi-metric-label">시료문자</div>
-          <div class="kpi-metric-val" id="resMajLetter">-</div>
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resMajLetter" style="font-size:1.02rem;">-</div>
         </div>
         <div class="kpi-metric-box">
           <div class="kpi-metric-label">표본크기(n)</div>
@@ -518,8 +521,8 @@
       </div>
       <div class="kpi-metrics">
         <div class="kpi-metric-box">
-          <div class="kpi-metric-label">시료문자</div>
-          <div class="kpi-metric-val" id="resMinLetter">-</div>
+          <div class="kpi-metric-label">시료문자(기준→적용)</div>
+          <div class="kpi-metric-val" id="resMinLetter" style="font-size:1.02rem;">-</div>
         </div>
         <div class="kpi-metric-box">
           <div class="kpi-metric-label">표본크기(n)</div>
@@ -543,16 +546,16 @@
     </div>
   </section>
 
-  <!-- [표 1] 및 [표 2] 상시 표시 영역 -->
+  <!-- [표 1] 및 [표 2] 분할 뷰 -->
   <section class="tables-layout">
     <!-- [표 1] 샘플문자표 -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <div>
           <h3 style="font-size:0.92rem; font-weight:700;">[표 1] 표본 크기 글자 부호 (샘플문자표)</h3>
-        <!--  <span style="font-size:0.72rem; color:#b91c1c; font-weight:700;">■ 검사수준, 로트 사이즈 별 샘플문자</span> -->
+          <!-- <span style="font-size:0.72rem; color:#b91c1c; font-weight:700;">■ 입력 매칭 행·열 음영 / 교차점 진하게 (AQL 0 입력 시 음영 제외)</span> -->
         </div>
-        <!--오후 3:31 2026-09-18<a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_1" target="_blank" rel="noopener noreferrer">🔗 원본 표 1 이미지 보기</a>-->
+        <!-- <a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_1" target="_blank" rel="noopener noreferrer">🔗 원본 표 1 이미지 보기</a> -->
       </div>
       <div class="table-container">
         <table id="table1">
@@ -604,7 +607,7 @@
             <span style="color:#2563eb;">● 경</span>
           </div>
         </div>
-      <!--  <a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_2" target="_blank" rel="noopener noreferrer">🔗 원본 표 2 이미지 보기</a> -->
+        <!-- <a class="link-btn" href="https://m.blog.naver.com/hsc0029/223286420619?view=img_2" target="_blank" rel="noopener noreferrer">🔗 원본 표 2 이미지 보기</a> -->
       </div>
       <div class="table-container">
         <table id="table2">
@@ -612,7 +615,6 @@
             <tr id="table2HeadRow">
               <th class="sticky-col">문자</th>
               <th class="sticky-n">시료(n)</th>
-              <!-- AQL 표준 열 -->
             </tr>
           </thead>
           <tbody id="table2Body"></tbody>
@@ -641,9 +643,9 @@
       </div>
 
       <div class="concept-box">
-        <h4>2. 화살표 표기 규칙 (Arrow Rule)</h4>
-        <p>• <strong>아래 화살표 (↓):</strong> 화살표 바로 아래의 첫 번째 샘플링 방식 채택 (표본 크기 <span class="math-formula">n</span>도 변경된 행의 값 적용)</p>
-        <p>• <strong>위 화살표 (↑):</strong> 화살표 바로 위의 첫 번째 방식 채택 (표본 크기 <span class="math-formula">n</span>도 해당 행의 값 적용)</p>
+        <h4>2. 화살표 규칙 (ISO 2859-1 제10.3절 규정)</h4>
+        <p>• <strong>아래 화살표 (↓):</strong> 화살표 바로 아래의 첫 번째 샘플링 방식 채택 (표본 크기 <span class="math-formula">n</span> 및 시료문자도 변경된 행의 값 적용)</p>
+        <p>• <strong>위 화살표 (↑):</strong> 화살표 바로 위의 첫 번째 방식 채택 (표본 크기 <span class="math-formula">n</span> 및 시료문자도 해당 행의 값 적용)</p>
         <p>• 표본 크기 <span class="math-formula">n ≥ N</span>(로트 크기)일 경우 100% 전수 검사 수행</p>
       </div>
 
@@ -709,7 +711,6 @@ function formatWithComma(num) {
   return parts.join('.');
 }
 
-// 0 입력 시 default로 덮어쓰지 않고 정확히 0으로 추출하는 파서
 function parseAqlInput(inputId, defaultVal) {
   var el = document.getElementById(inputId);
   if (!el) return defaultVal;
@@ -732,14 +733,10 @@ function findClosestAQLIndex(aql) {
   return closestIdx;
 }
 
-/**
- * 샘플링 플랜 산출: AQL이 0인 경우 ISO 2859-1 표준 표 매핑 제외 및 Ac=0, Re=1 무결점 처리
- */
 function resolvePlan(initLetter, targetAql, lotSize) {
   var rowIdx = CODE_LETTERS.indexOf(initLetter);
   var effN = SAMPLE_SIZES[rowIdx];
 
-  // AQL이 0인 경우: 표 2의 표준 AQL 열 매핑 제외 (colIdx: -1)
   if (targetAql === 0) {
     return {
       initialLetter: initLetter,
@@ -750,7 +747,7 @@ function resolvePlan(initLetter, targetAql, lotSize) {
       ac: 0,
       re: 1,
       arrow: null,
-      colIdx: -1, // 표 2 열 매핑 없음
+      colIdx: -1,
       matchedAql: 0,
       isZeroAql: true,
       isFullInspection: false
@@ -873,47 +870,39 @@ function syncAQL(type, val) {
 }
 
 /**
- * 3. 핵심 계산 및 음영 제어
+ * 계산 및 시각화 동기화
  */
 function calculateAll() {
   var lotSizeRaw = parseNumberWithComma(document.getElementById('lotSizeInput').value);
   var lotSize = Math.max(2, lotSizeRaw);
   var inspLevel = document.getElementById('inspLevelSelect').value;
 
-  // 0 입력 시 default가 아닌 0으로 정확히 처리 (0 || 0.10 버그 차단)
   var critAql = parseAqlInput('aqlCritInput', 0.10);
   var majAql = parseAqlInput('aqlMajInput', 0.10);
   var minAql = parseAqlInput('aqlMinInput', 0.65);
 
-  // [표 1] 매핑 행 및 시료문자 도출
   var lotRowIdx = LOT_RANGES.findIndex(function(r) { return lotSize >= r.min && lotSize <= r.max; });
   if (lotRowIdx === -1) lotRowIdx = LOT_RANGES.length - 1;
   var initialLetter = LOT_RANGES[lotRowIdx].letters[inspLevel];
 
-  // 샘플링 계획 산출
   var planCrit = resolvePlan(initialLetter, critAql, lotSize);
   var planMaj = resolvePlan(initialLetter, majAql, lotSize);
   var planMin = resolvePlan(initialLetter, minAql, lotSize);
 
-  // 상단 KPI 카드 실시간 갱신
   updateCard('Crit', planCrit);
   updateCard('Maj', planMaj);
   updateCard('Min', planMin);
 
-  // 치명, 중, 경 모두 0인지 여부 판정
   var isAllZero = (planCrit.isZeroAql && planMaj.isZeroAql && planMin.isZeroAql);
 
-  // [표 1] 하이라이트: 모두 0인 경우 적색 음영 완전 제거, 그 외 정상 음영 표시
   renderTable1Highlight(lotRowIdx, inspLevel, isAllZero);
 
-  // [표 2] 하이라이트: AQL이 0인 결점은 음영 표시에서 제외, 모두 0이면 표 2 적색 음영 완전 제거
   renderTable2Highlight(initialLetter, [
     { name: '치명', plan: planCrit },
     { name: '중',   plan: planMaj },
     { name: '경',   plan: planMin }
   ], isAllZero);
 
-  // OC Curve 갱신
   updateOCCurve([
     { label: '치명(Critical)', plan: planCrit, color: '#dc2626' },
     { label: '중(Major)',    plan: planMaj,  color: '#ea580c' },
@@ -923,16 +912,11 @@ function calculateAll() {
   runVerdict();
 }
 
-/**
- * [표 1] 시각화 (모두 0인 경우 음영 미표시)
- */
 function renderTable1Highlight(rIdx, level, isAllZero) {
   document.querySelectorAll('#table1 tr').forEach(function(tr) { tr.classList.remove('hl-row'); });
   document.querySelectorAll('#table1 th, #table1 td').forEach(function(el) { el.classList.remove('hl-col', 'hl-cross'); });
 
-  if (isAllZero) {
-    return; // 모두 0인 경우 표 1 적색 음영 제거
-  }
+  if (isAllZero) return;
 
   var targetRow = document.getElementById('t1-r-' + rIdx);
   if (targetRow) targetRow.classList.add('hl-row');
@@ -947,39 +931,33 @@ function renderTable1Highlight(rIdx, level, isAllZero) {
   }
 }
 
-/**
- * [표 2] 시각화 (AQL 0인 결점은 열/교차점 음영 제외, 모두 0이면 전체 음영 제거)
- */
 function renderTable2Highlight(initialLetter, aqlPlans, isAllZero) {
-  document.querySelectorAll('#table2 tr').forEach(function(tr) { tr.classList.remove('hl-row'); });
+  document.querySelectorAll('#table2 tr').forEach(function(tr) {
+    tr.classList.remove('hl-row', 'hl-base-row');
+  });
   document.querySelectorAll('#table2 th, #table2 td').forEach(function(el) {
     el.classList.remove('hl-col', 'hl-cross');
     var tag = el.querySelector('.cross-label');
     if (tag) tag.remove();
   });
 
-  if (isAllZero) {
-    return; // 모두 0인 경우 표 2 적색 음영 완전 제거
-  }
+  if (isAllZero) return;
 
-  // 유효한(AQL > 0) 플랜만 필터링
   var activePlans = aqlPlans.filter(function(item) { return !item.plan.isZeroAql; });
 
-  if (activePlans.length > 0) {
-    // 기준 문자 행 음영
-    var baseRowIdx = CODE_LETTERS.indexOf(initialLetter);
-    var baseRow = document.getElementById('t2-r-' + baseRowIdx);
-    if (baseRow) baseRow.classList.add('hl-row');
-  }
+  // 원래 기준 행(Table 1 도출 행)을 파란 테두리로 표시
+  var baseRowIdx = CODE_LETTERS.indexOf(initialLetter);
+  var baseRow = document.getElementById('t2-r-' + baseRowIdx);
+  if (baseRow) baseRow.classList.add('hl-base-row');
 
   activePlans.forEach(function(item) {
     var p = item.plan;
     
-    // 유효 행 음영
+    // 유효 행(화살표 이동 후 행) 붉은 음영
     var effRow = document.getElementById('t2-r-' + p.effectiveRowIdx);
     if (effRow) effRow.classList.add('hl-row');
 
-    // 해당 AQL 열 음영
+    // 해당 AQL 열 붉은 음영
     var th = document.getElementById('t2-h-' + p.colIdx);
     if (th) th.classList.add('hl-col');
     document.querySelectorAll('#table2 td[data-t2-c="' + p.colIdx + '"]').forEach(function(td) { td.classList.add('hl-col'); });
@@ -1007,25 +985,32 @@ function renderTable2Highlight(initialLetter, aqlPlans, isAllZero) {
 function updateCard(type, plan) {
   var badge = document.getElementById('badge' + type);
   var arrowEl = document.getElementById('arrowInfo' + type);
+  var letterEl = document.getElementById('res' + type + 'Letter');
 
   if (plan.isZeroAql) {
     badge.textContent = 'AQL 0.00 (결점불허)';
     badge.className = 'badge badge-zero';
+    letterEl.textContent = plan.initialLetter;
     arrowEl.textContent = '※ AQL 0 입력: 결점 불허(Ac=0, Re=1) 무결점 판정 적용 (판정표 음영 제외)';
   } else {
     badge.textContent = 'AQL ' + plan.matchedAql.toFixed(2);
     badge.className = 'badge badge-' + type.toLowerCase();
     
-    if (plan.arrow === 'down') {
-      arrowEl.textContent = '※ 아래 화살표(↓): 표본크기 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)] 변경 적용';
-    } else if (plan.arrow === 'up') {
-      arrowEl.textContent = '※ 위 화살표(↑): 표본크기 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)] 변경 적용';
+    // 기준문자 -> 유효문자 직관적 병기
+    if (plan.arrow) {
+      letterEl.innerHTML = '<span style="color:#64748b; font-size:0.85rem; text-decoration:line-through;">' + plan.initialLetter + '</span> → <span style="color:#b91c1c; font-weight:800;">' + plan.effectiveLetter + '</span>';
+      
+      if (plan.arrow === 'down') {
+        arrowEl.textContent = '※ ISO 2859-1 제10.3절 화살표(↓): 표본크기 및 문자가 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)]로 변경 적용';
+      } else {
+        arrowEl.textContent = '※ ISO 2859-1 제10.3절 화살표(↑): 표본크기 및 문자가 [' + plan.initialLetter + '] → [' + plan.effectiveLetter + '(' + plan.n + '개)]로 변경 적용';
+      }
     } else {
+      letterEl.textContent = plan.initialLetter;
       arrowEl.textContent = plan.isFullInspection ? "※ 표본 크기가 로트 크기 이상이므로 100% 전수검사" : "";
     }
   }
 
-  document.getElementById('res' + type + 'Letter').textContent = plan.effectiveLetter;
   document.getElementById('res' + type + 'N').textContent = formatWithComma(plan.n);
   document.getElementById('res' + type + 'Ac').textContent = plan.ac;
   document.getElementById('res' + type + 'Re').textContent = plan.re;
@@ -1115,9 +1100,6 @@ function runVerdict() {
   });
 }
 
-/**
- * 4. 초기화 및 리스너 등록
- */
 window.addEventListener('DOMContentLoaded', function() {
   buildTable2();
   initAQLDropdowns();
